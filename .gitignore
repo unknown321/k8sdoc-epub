@@ -1,0 +1,8 @@
+index.html
+.idea
+*.swp
+*.pyc
+img/
+*.epub
+.venv
+*.html
