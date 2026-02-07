@@ -3,6 +3,9 @@ import pathlib
 import logging
 import time
 import subprocess
+import json
+import zlib
+import base64
 from urllib.parse import urlparse
 
 import requests
@@ -11,6 +14,8 @@ from bs4.dammit import html_meta
 from ebooklib import epub
 from pathvalidate import sanitize_filename
 from bs4 import BeautifulSoup
+
+HTTP_DELAY_SECONDS = 2
 
 logger = logging.getLogger(__name__)
 
@@ -70,13 +75,18 @@ def get_images(page_soup):
 
             content = get_html(parsed.geturl())
             if content == "":
-                time.sleep(2)
+                time.sleep(HTTP_DELAY_SECONDS)
                 if parsed.geturl() not in failed:
                     failed.append(parsed.geturl())
                 continue
 
             filepath.write_bytes(content)
-            time.sleep(2)
+            time.sleep(HTTP_DELAY_SECONDS)
+
+#        if str(filepath).endswith(".svg"):
+#            pngpath = str(filepath).removesuffix(".svg") + ".png"
+#            subprocess.run(["convert", "-background", "none", "-density", "96", str(filepath), pngpath])
+#            filepath = pathlib.Path(pngpath)
 
         # ew
         img.attrs["src"] = str(filepath)
@@ -86,6 +96,14 @@ def get_images(page_soup):
             result.append(str(filepath))
     return result
 
+def decodePako(link: str):
+    if "#pako:" not in link:
+        raise ValueError("Invalid pako link")
+
+    b64_data = link.split("#pako:")[1].replace("-", "+").replace("_", "/")
+    if len(b64_data) % 4 != 0:
+        b64_data += "=" * (4 - len(b64_data) % 4)
+    return json.loads(zlib.decompress(base64.b64decode(b64_data)).decode("utf-8"))
 
 def replace_mermaid(bs):
     mms = bs.find_all("div", {"class":"mermaid"})
@@ -93,7 +111,15 @@ def replace_mermaid(bs):
         if m.string:
             out = subprocess.run(["./mmdr", "-i", "-"], capture_output=True, input = m.text.encode())
             svgSoup = BeautifulSoup(out.stdout.decode(), "html.parser")
-            m.replaceWith(svgSoup.find_all("svg")[0])
+            m.replace_with(svgSoup.find_all("svg")[0])
+
+    pakolinks = bs.find_all("a", href=lambda href: href and "mermaid.live" in href)
+    for p in pakolinks:
+        mm = decodePako(p["href"])
+        out = subprocess.run(["./mmdr", "-i", "-"], capture_output=True, input = mm["code"].encode())
+        svgSoup = BeautifulSoup(out.stdout.decode(), "html.parser")
+        p.replace_with(svgSoup.find_all("svg")[0])
+
 
 
 def run(version, lang):
