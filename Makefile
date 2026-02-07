@@ -1,23 +1,21 @@
-MMDR_VERSION=0.1.3
-MMDR_SHA256=577ac54b64a200003688a73d15f46ad9e09478412737d876652400d8997ae2e9
+KEPUBIFY_VERSION=v4.0.4
+KEPUBIFY_SHA256=37d7628d26c5c906f607f24b36f781f306075e7073a6fe7820a751bb60431fc5
+
+kepubify:
+	wget https://github.com/pgaskin/kepubify/releases/download/$(KEPUBIFY_VERSION)/kepubify-linux-64bit
+	echo -n "$(KEPUBIFY_SHA256) kepubify-linux-64bit" | sha256sum -c -
 
 clean:
-	rm -v *.html *.epub
+	-rm -v *.html *.epub
 
 veryclean: clean
 	rm -rf img
 
-mmdr:
-	wget https://github.com/1jehuang/mermaid-rs-renderer/releases/download/v$(MMDR_VERSION)/mmdr-x86_64-unknown-linux-gnu.tar.gz
-	echo -n "$(MMDR_SHA256) mmdr-x86_64-unknown-linux-gnu.tar.gz" | sha256sum -c -
-	tar xf mmdr-x86_64-unknown-linux-gnu.tar.gz
-	rm mmdr-x86_64-unknown-linux-gnu.tar.gz
-
-
-prepare: mmdr
+prepare: kepubify
 	pip install -r requirements.txt
 
 run:
 	python3 main.py
+	kepubify --no-add-dummy-titlepage -i *.epub
 
 .PHONY: run clean veryclean

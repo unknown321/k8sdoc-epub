@@ -14,6 +14,11 @@ KOBO users should use `kepub.epub` version.
   - TOC is flattened
   - missing EPUB cover
 
+### Requirements
+
+  - python
+  - docker
+
 ### Build
 
 Install pip dependencies:

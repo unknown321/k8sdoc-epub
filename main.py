@@ -29,6 +29,7 @@ LANGS = [
 HOST = "https://kubernetes.io"
 DOMAIN = "kubernetes.io"
 IMAGES_DIR = "img"
+MERMAID_INDEX = 0
 
 
 def get_html(url):
@@ -107,19 +108,34 @@ def decodePako(link: str):
 
 def replace_mermaid(bs):
     mms = bs.find_all("div", {"class":"mermaid"})
+    os.makedirs(os.getcwd() + "/img/mermaid", exist_ok=True)
+    mountdir = os.getcwd() + "/img/mermaid:/img/mermaid"
+
+    pngs = []
+    global MERMAID_INDEX
+
     for m in mms:
         if m.string:
-            out = subprocess.run(["./mmdr", "-i", "-"], capture_output=True, input = m.text.encode())
-            svgSoup = BeautifulSoup(out.stdout.decode(), "html.parser")
-            m.replace_with(svgSoup.find_all("svg")[0])
+            filename = f"img/mermaid/mermaid-{MERMAID_INDEX}.png"
+            out = subprocess.run(["docker", "run", "-u", str(os.getuid()), "-i", "--rm", "-v", mountdir, "minlag/mermaid-cli:11.12.1-beta.5", "-i", "-", "-o", "/" + filename], input = m.text.encode())
+            print(f"generated {filename}")
+            img = BeautifulSoup(f'<img src="{filename}" processed="true"/>', 'lxml').img
+            m.replace_with(img)
+            pngs.append(filename)
+            MERMAID_INDEX = MERMAID_INDEX + 1
 
     pakolinks = bs.find_all("a", href=lambda href: href and "mermaid.live" in href)
     for p in pakolinks:
         mm = decodePako(p["href"])
-        out = subprocess.run(["./mmdr", "-i", "-"], capture_output=True, input = mm["code"].encode())
-        svgSoup = BeautifulSoup(out.stdout.decode(), "html.parser")
-        p.replace_with(svgSoup.find_all("svg")[0])
+        filename = f"img/mermaid/mermaid-{MERMAID_INDEX}.png"
+        out = subprocess.run(["docker", "run", "-u", str(os.getuid()), "-i", "--rm", "-v", mountdir, "minlag/mermaid-cli:11.12.1-beta.5", "-i", "-", "-o", "/" + filename], input = mm["code"].encode())
+        print(f"generated {filename} from pako")
+        img = BeautifulSoup(f'<img src="{filename}" processed="true"/>', 'lxml').img
+        p.replace_with(img)
+        pngs.append(filename)
+        MERMAID_INDEX = MERMAID_INDEX + 1
 
+    return pngs
 
 
 def run(version, lang):
@@ -128,7 +144,7 @@ def run(version, lang):
     url = f"https://{version}.docs.kubernetes.io/docs/_print/index.html"
     if lang != "en":
         url = f"https://kubernetes.io/{lang}/docs/_print/index.html"
-    epub_name = f"Kubernetes_Documentation.{lang}.epub"
+    epub_name = f"Kubernetes_Documentation.{VERSION}.{lang}.epub"
 
     f = pathlib.Path(html_name)
     if not f.exists():
@@ -168,8 +184,9 @@ def run(version, lang):
     book.add_item(css_entry)
 
     i = 0
-    # skip hugo-generated toc
     logger.info(f"Found {len(pages)} pages")
+
+    # skip hugo-generated toc
     for page in pages[1:]:
         i = i +1
         header = page.find("h1")
@@ -178,8 +195,8 @@ def run(version, lang):
             exit(1)
         title = header.text.strip()
         title = sanitize_filename(title)
-        replace_mermaid(page)
         images = get_images(page)
+        mmimages = replace_mermaid(page)
         logger.info(f"Processing page {i}, images {len(images)}, title {title}")
 
         xhtmlName = title.replace(" ", "_") + ".xhtml"
@@ -188,6 +205,18 @@ def run(version, lang):
         c1.add_item(css_entry)
 
         for image in images:
+            if book.get_item_with_id(image):
+                continue
+            m = magic.from_file(image, mime=True)
+            img = epub.EpubImage(
+                uid=image,
+                file_name=image,
+                media_type=m,
+                content=open(image, "rb").read(),
+            )
+            book.add_item(img)
+
+        for image in mmimages:
             if book.get_item_with_id(image):
                 continue
             m = magic.from_file(image, mime=True)
@@ -214,7 +243,9 @@ def run(version, lang):
 def main():
     logging.basicConfig(level=logging.INFO)
     logger.info('Started')
+    global MERMAID_INDEX
     for lang in LANGS:
+        MERMAID_INDEX = 0
         run(VERSION, lang)
     logger.info('Finished')
 
