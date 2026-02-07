@@ -2,6 +2,7 @@ import os
 import pathlib
 import logging
 import time
+import subprocess
 from urllib.parse import urlparse
 
 import requests
@@ -13,6 +14,7 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
+VERSION = "v1-34"
 LANGS = [
     "en",
     "bn",
@@ -85,10 +87,19 @@ def get_images(page_soup):
     return result
 
 
-def run(lang):
-    logger.info(f"Language: {lang}")
+def replace_mermaid(bs):
+    mms = bs.find_all("div", {"class":"mermaid"})
+    for m in mms:
+        if m.string:
+            out = subprocess.run(["./mmdr", "-i", "-"], capture_output=True, input = m.text.encode())
+            svgSoup = BeautifulSoup(out.stdout.decode(), "html.parser")
+            m.replaceWith(svgSoup.find_all("svg")[0])
+
+
+def run(version, lang):
+    logger.info(f"Language: {lang}, version {version}")
     html_name = f"index.{lang}.html"
-    url = "https://kubernetes.io/docs/_print/index.html"
+    url = f"https://{version}.docs.kubernetes.io/docs/_print/index.html"
     if lang != "en":
         url = f"https://kubernetes.io/{lang}/docs/_print/index.html"
     epub_name = f"Kubernetes_Documentation.{lang}.epub"
@@ -141,6 +152,7 @@ def run(lang):
             exit(1)
         title = header.text.strip()
         title = sanitize_filename(title)
+        replace_mermaid(page)
         images = get_images(page)
         logger.info(f"Processing page {i}, images {len(images)}, title {title}")
 
@@ -177,7 +189,7 @@ def main():
     logging.basicConfig(level=logging.INFO)
     logger.info('Started')
     for lang in LANGS:
-        run(lang)
+        run(VERSION, lang)
     logger.info('Finished')
 
 
