@@ -19,7 +19,7 @@ HTTP_DELAY_SECONDS = 2
 
 logger = logging.getLogger(__name__)
 
-VERSION = "v1-34"
+VERSION = "v1-35"
 LANGS = [
     "en",
     "bn",
